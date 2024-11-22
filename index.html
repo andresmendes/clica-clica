@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clica-clica</title>
+<style>
+    /* Body */
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        overflow: hidden; /* Prevent scrollbars */
+    }
+
+    /* Header */
+    #header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 20px;
+        background-color: #f0f0f0;
+        border-bottom: 1px solid #ccc;
+    }
+    #header div {
+        display: flex;
+        align-items: center; /* Ensures buttons are vertically aligned */
+        gap: 10px; /* Adds spacing between buttons */
+    }
+    #header button {
+        padding: 10px 20px;
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    #header button:hover {
+        background-color: #0056b3;
+    }
+
+    /* Help Button */
+    #help-button {
+        padding: 0;
+        background-color: #6c757d;
+        color: white;
+        border: none;
+        cursor: pointer;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        display: flex; /* Flexbox for centering */
+        justify-content: center;
+        align-items: center;
+    }
+    #help-button:hover {
+        background-color: #343a40;
+    }
+
+    /* Canvas Container */
+    #canvas-container {
+        position: relative;
+        width: 100%;
+        height: calc(100vh - 50px); /* Full height minus header height */
+    }
+    canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+    }
+
+    /* Drop Area */
+    #drop-area {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(200, 200, 200, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: #333;
+        border: 2px dashed #666;
+        z-index: 10;
+        text-align: center;
+    }
+    #drop-area.dragging {
+        background-color: rgba(100, 100, 100, 0.7);
+    }
+
+    /* Help Modal */
+    #help-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 20;
+    }
+    #help-modal.hidden {
+        display: none;
+    }
+
+    /* Help Content */
+    #help-content {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        max-width: 500px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        text-align: left; /* Align text to the left */
+        display: flex;
+        flex-direction: column; /* Stack elements vertically */
+        align-items: center; /* Center align the button */
+    }
+    #help-content h2 {
+        margin-top: 0;
+        text-align: center; /* Center the title */
+    }
+    #help-content ul {
+        padding-left: 20px; /* Indent bullet points */
+        margin: 0;
+        list-style-type: disc;
+        align-self: stretch; /* Ensure the list stretches full width */
+    }
+    #help-content li {
+        margin-bottom: 10px;
+    }
+    #help-content button {
+        margin-top: 20px;
+        padding: 10px 20px;
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        align-self: center; /* Center the button horizontally */
+    }
+    #help-content button:hover {
+        background-color: #0056b3;
+    }
+</style>
+
+
+</head>
+<body>
+    <div id="header">
+        <h1>Clica-clica</h1>
+        <div>
+            <input type="file" id="load-csv" accept=".csv" style="display: none;">
+            <button id="load-csv-button">Load CSV</button>
+            <button id="export-button" disabled>Export CSV</button>
+            <button id="help-button">?</button>
+        </div>
+    </div>
+
+    <!-- Modal for Help Instructions -->
+    <div id="help-modal" class="hidden">
+        <div id="help-content">
+            <h2>How to Use Clica-clica</h2>
+            <ul>
+                <li>Drag and drop an image onto the canvas to start.</li>
+                <li>Left-click on the image to add points.</li>
+                <li>Drag points to move them around.</li>
+                <li>Right-click on a point to delete it.</li>
+                <li>Click on green midpoints to add new points between existing ones.</li>
+                <li>Use the mouse wheel to zoom in and out.</li>
+                <li>Middle-click and drag to pan around the canvas.</li>
+                <li>Click "Export CSV" to save your points as a CSV file.</li>
+                <li>Click "Load CSV" to upload a CSV file with existing points.</li>
+            </ul>
+            <button id="close-help-button">Close</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <div id="drop-area">Drag and Drop an Image Here</div>
+        <canvas id="imageCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvasContainer = document.getElementById('canvas-container');
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const dropArea = document.getElementById('drop-area');
+        const exportButton = document.getElementById('export-button');
+        const loadCsvButton = document.getElementById('load-csv-button');
+        const loadCsvInput = document.getElementById('load-csv');
+        const points = [];
+        let draggingPointIndex = null;
+
+        // Zoom and pan state
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isPanning = false;
+        let panStart = { x: 0, y: 0 };
+        let img = null;
+
+        // Drag-and-drop functionality
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('dragging');
+        });
+
+        dropArea.addEventListener('dragleave', () => {
+            dropArea.classList.remove('dragging');
+        });
+
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('dragging');
+
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    img = new Image();
+                    img.src = reader.result;
+                    img.onload = () => {
+                        // Hide drop area
+                        dropArea.style.display = 'none';
+
+                        // Resize canvas and enable export button
+                        resizeCanvas();
+                        exportButton.disabled = false;
+
+                        redraw();
+                    };
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // CSV Loading functionality
+        loadCsvButton.addEventListener('click', () => {
+            loadCsvInput.click();
+        });
+
+        loadCsvInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && file.type === 'text/csv') {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const csvData = reader.result;
+                    loadPointsFromCsv(csvData);
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function loadPointsFromCsv(csvData) {
+            const rows = csvData.split('\n');
+            points.length = 0; // Clear existing points
+            rows.forEach(row => {
+                const [x, y] = row.split(',').map(Number);
+                if (!isNaN(x) && !isNaN(y)) {
+                    points.push({ x, y });
+                }
+            });
+            redraw();
+        }
+
+        // Dynamically resize canvas to fit the screen
+        function resizeCanvas() {
+            canvas.width = canvasContainer.offsetWidth;
+            canvas.height = canvasContainer.offsetHeight;
+            redraw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        canvasContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomIntensity = 0.1;
+            const mouseX = e.offsetX;
+            const mouseY = e.offsetY;
+
+            // Convert mouse position to world coordinates before zoom
+            const worldX = (mouseX - offsetX) / scale;
+            const worldY = (mouseY - offsetY) / scale;
+
+            // Adjust scale
+            const newScale = e.deltaY < 0 ? scale * (1 + zoomIntensity) : scale / (1 + zoomIntensity);
+
+            // Adjust offset to keep the zoom focused at the mouse position
+            offsetX -= (worldX * newScale - worldX * scale);
+            offsetY -= (worldY * newScale - worldY * scale);
+
+            scale = newScale;
+            redraw();
+        });
+
+        canvasContainer.addEventListener('mousedown', (e) => {
+            if (e.button === 1) { // Middle mouse button
+                isPanning = true;
+                panStart = { x: e.clientX, y: e.clientY };
+                canvasContainer.style.cursor = 'grabbing';
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                offsetX += e.clientX - panStart.x;
+                offsetY += e.clientY - panStart.y;
+                panStart = { x: e.clientX, y: e.clientY };
+                redraw();
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 1) {
+                isPanning = false;
+                canvasContainer.style.cursor = 'crosshair';
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!img) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left - offsetX) / scale;
+            const y = (e.clientY - rect.top - offsetY) / scale;
+
+            const radius = 1;
+
+            // Check if a green midpoint is clicked and drag it immediately
+            const midpoint = findMidpoint(x, y);
+            if (midpoint) {
+                points.splice(midpoint.index + 1, 0, { x: midpoint.x, y: midpoint.y });
+                draggingPointIndex = midpoint.index + 1; // Set the new point as the active draggable point
+                redraw();
+                return;
+            }
+
+            // Check if dragging an existing point
+            draggingPointIndex = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < radius);
+
+            // Add a new point if not clicking on an existing point
+            if (draggingPointIndex === -1 && e.button === 0) {
+                points.push({ x, y });
+                redraw();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!img || draggingPointIndex === null) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left - offsetX) / scale;
+            const y = (e.clientY - rect.top - offsetY) / scale;
+
+            points[draggingPointIndex].x = x;
+            points[draggingPointIndex].y = y;
+            redraw();
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            draggingPointIndex = null;
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            if (!img) return;
+
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left - offsetX) / scale;
+            const y = (e.clientY - rect.top - offsetY) / scale;
+
+            const radius = 1;
+            const index = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < radius);
+            if (index !== -1) {
+                points.splice(index, 1);
+                redraw();
+            }
+        });
+
+        exportButton.addEventListener('click', () => {
+            if (!img) return;
+
+            const csvContent = "data:text/csv;charset=utf-8," +
+                points.map(p => `${p.x},${p.y}`).join("\n");
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', 'coordinates.csv');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        function redraw() {
+            ctx.save();
+            ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+            ctx.clearRect(-offsetX / scale, -offsetY / scale, canvas.width / scale, canvas.height / scale);
+
+            if (img) {
+                ctx.drawImage(img, 0, 0);
+            }
+
+            // Draw lines and midpoints first
+            points.forEach((p, i) => {
+                if (i > 0) {
+                    const prev = points[i - 1];
+
+                    // Draw line
+                    ctx.strokeStyle = 'blue';
+                    ctx.lineWidth = 2 / scale;
+                    ctx.beginPath();
+                    ctx.moveTo(prev.x, prev.y);
+                    ctx.lineTo(p.x, p.y);
+                    ctx.stroke();
+
+                    // Draw midpoint
+                    const midpoint = {
+                        x: (prev.x + p.x) / 2,
+                        y: (prev.y + p.y) / 2,
+                    };
+                    ctx.fillStyle = 'green';
+                    ctx.beginPath();
+                    ctx.arc(midpoint.x, midpoint.y, 5 / scale, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+
+            // Draw markers on top of lines
+            points.forEach((p) => {
+                ctx.fillStyle = 'red';
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5 / scale, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            ctx.restore();
+        }
+
+        function findMidpoint(x, y) {
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const midpoint = {
+                    x: (p1.x + p2.x) / 2,
+                    y: (p1.y + p2.y) / 2,
+                };
+
+                if (Math.hypot(midpoint.x - x, midpoint.y - y) < 10 / scale) {
+                    return { ...midpoint, index: i };
+                }
+            }
+            return null;
+        }
+
+        const helpButton = document.getElementById('help-button');
+        const helpModal = document.getElementById('help-modal');
+        const closeHelpButton = document.getElementById('close-help-button');
+
+        helpButton.addEventListener('click', () => {
+            helpModal.classList.remove('hidden');
+        });
+
+        closeHelpButton.addEventListener('click', () => {
+            helpModal.classList.add('hidden');
+        });
+
+        // Close the modal if the user clicks outside of the content
+        helpModal.addEventListener('click', (e) => {
+            if (e.target === helpModal) {
+                helpModal.classList.add('hidden');
+            }
+        });        
+    </script>
+</body>
+</html>
